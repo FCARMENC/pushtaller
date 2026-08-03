@@ -1,0 +1,9 @@
+{
+  "name": "expert-taller-push",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Función serverless gratuita en Vercel que envía avisos push (Firebase Cloud Messaging) cuando un cliente aprueba o rechaza una proforma en Expert Taller.",
+  "dependencies": {
+    "firebase-admin": "^12.1.0"
+  }
+}
