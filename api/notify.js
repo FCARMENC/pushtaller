@@ -11,13 +11,11 @@ const admin = require("firebase-admin");
 
 function getAdminApp() {
   if (admin.apps.length) return admin.apps[0];
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  // Las credenciales se guardan en Vercel como un solo JSON completo
+  // (FIREBASE_SERVICE_ACCOUNT_JSON), tal cual se descarga desde Firebase Console.
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "{}");
   return admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: privateKey,
-    }),
+    credential: admin.credential.cert(serviceAccount),
   });
 }
 
