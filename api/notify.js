@@ -34,7 +34,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { proformaId, secret } = req.body || {};
+    const { proformaId, secret, title: clientTitle, body: clientBody } = req.body || {};
     if (!secret || secret !== process.env.NOTIFY_SECRET) {
       res.status(401).json({ error: "Secreto inválido" });
       return;
@@ -67,10 +67,13 @@ module.exports = async (req, res) => {
 
     const ca = pf.clientApproval || {};
     const total = (pf.items || []).reduce((s, it) => s + it.qty * it.price, 0) * (pf.incluyeIgv ? 1.18 : 1);
-    const title = ca.approved ? `${pf.code} aprobada` : `${pf.code} rechazada`;
-    const body = ca.approved
+    // Preferimos el título/cuerpo que manda el cliente en el momento del clic: reflejan la
+    // acción real sin depender de que la sincronización a Firestore (asíncrona, en index.html)
+    // ya haya terminado de subir el nuevo estado cuando esta función lee el documento.
+    const title = clientTitle || (ca.approved ? `${pf.code} aprobada` : `${pf.code} rechazada`);
+    const body = clientBody || (ca.approved
       ? `${ca.approvedBy || "Cliente"} aprobó por S/ ${total.toFixed(2)}.`
-      : `${ca.rejectedBy || "Cliente"} rechazó la proforma.${ca.reason ? " Motivo: " + ca.reason : ""}`;
+      : `${ca.rejectedBy || "Cliente"} rechazó la proforma.${ca.reason ? " Motivo: " + ca.reason : ""}`);
 
     const response = await admin.messaging().sendEachForMulticast({
       tokens: tokens,
