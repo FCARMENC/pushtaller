@@ -1,0 +1,15 @@
+name: Revisar citas para avisos push
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check-citas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar a la función de Vercel
+        run: |
+          curl -sf -X POST "https://pushtaller.vercel.app/api/check-citas" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
