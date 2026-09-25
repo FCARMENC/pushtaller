@@ -4,6 +4,11 @@
 // guardados en Firestore (alquiler, proveedores, etc.). Si alguno vence dentro
 // de los próximos DIAS_AVISO días y todavía no se avisó por esa fecha, manda
 // un push — un solo aviso por vencimiento, no todos los días mientras se acerca.
+//
+// El recordatorio diario al equipo (con hora configurable) y los avisos de
+// citas viven en check-citas.js, que corre cada 10 min vía GitHub Actions —
+// ahí sí se puede respetar una hora exacta, cosa que el cron de Vercel (1 vez
+// al día) no permite en el plan gratis.
 // -----------------------------------------------------------------------------
 const admin = require("firebase-admin");
 
