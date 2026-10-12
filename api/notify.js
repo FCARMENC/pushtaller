@@ -1,8 +1,30 @@
-// Vercel: api/notify.js → POST /api/notify
+// Vercel: api/notify.js  →  POST https://pushtaller.vercel.app/api/notify
 // Env: NOTIFY_SECRET, FIREBASE_SERVICE_ACCOUNT_JSON
-// Opcional: NOTIFY_ICON_URL, NOTIFY_BADGE_URL
+//
+// CORS: la app vive en GitHub Pages (fcarmenc.github.io) y llama a este dominio.
 
 const admin = require("firebase-admin");
+
+const ALLOWED_ORIGINS = [
+  "https://fcarmenc.github.io",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
+
+function corsHeaders(origin) {
+  const allow =
+    origin && ALLOWED_ORIGINS.some(function (o) {
+      return origin === o || origin.indexOf("https://fcarmenc.github.io") === 0;
+    })
+      ? origin
+      : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allow || "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+  };
+}
 
 function getAdminApp() {
   if (admin.apps.length) return admin.apps[0];
@@ -22,15 +44,25 @@ function normalizeTokens(raw) {
 }
 
 module.exports = async function handler(req, res) {
+  const origin = req.headers.origin || "";
+  const headers = corsHeaders(origin);
+  Object.keys(headers).forEach(function (k) {
+    res.setHeader(k, headers[k]);
+  });
+
+  // Preflight del navegador (sin esto sale "Failed to fetch")
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+
   if (req.method !== "POST") {
     res.status(405).json({ error: "Método no permitido" });
     return;
   }
+
   try {
-    const body =
-      typeof req.body === "string"
-        ? JSON.parse(req.body || "{}")
-        : req.body || {};
+    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
     if (!body.secret || body.secret !== process.env.NOTIFY_SECRET) {
       res.status(401).json({ error: "Secreto inválido" });
       return;
@@ -39,30 +71,16 @@ module.exports = async function handler(req, res) {
     const title = String(body.title || "Expert").slice(0, 120);
     const msgBody = String(body.body || "").slice(0, 500);
     const tag = String(body.tag || "aviso-equipo").slice(0, 64);
-    const icon =
-      process.env.NOTIFY_ICON_URL ||
-      "https://pushtaller.vercel.app/icon-192.png";
-    const badge =
-      process.env.NOTIFY_BADGE_URL ||
-      "https://pushtaller.vercel.app/badge-72.png";
+    const icon = process.env.NOTIFY_ICON_URL || "https://pushtaller.vercel.app/icon-192.png";
+    const badge = process.env.NOTIFY_BADGE_URL || "https://pushtaller.vercel.app/badge-72.png";
 
     getAdminApp();
     const db = admin.firestore();
-    const snap = await db
-      .collection("tallerData")
-      .doc("expertTaller.fcmTokens")
-      .get();
+    const snap = await db.collection("tallerData").doc("expertTaller.fcmTokens").get();
     const tokens = normalizeTokens((snap.exists && snap.data().value) || []);
 
     if (!tokens.length) {
-      res
-        .status(200)
-        .json({
-          ok: true,
-          sent: 0,
-          failed: 0,
-          note: "Sin dispositivos registrados",
-        });
+      res.status(200).json({ ok: true, sent: 0, failed: 0, note: "Sin dispositivos registrados" });
       return;
     }
 
@@ -72,14 +90,8 @@ module.exports = async function handler(req, res) {
       data: { title: title, body: msgBody, tag: tag, icon: icon, badge: badge },
       webpush: {
         headers: { Urgency: "high" },
-        notification: {
-          title: title,
-          body: msgBody,
-          icon: icon,
-          badge: badge,
-          tag: tag,
-        },
-        fcmOptions: { link: "/" },
+        notification: { title: title, body: msgBody, icon: icon, badge: badge, tag: tag },
+        fcmOptions: { link: "https://fcarmenc.github.io/tallerpro/" },
       },
     });
 
@@ -98,10 +110,10 @@ module.exports = async function handler(req, res) {
       const next = tokens.filter(function (t) {
         return invalid.indexOf(t) === -1;
       });
-      await db
-        .collection("tallerData")
-        .doc("expertTaller.fcmTokens")
-        .set({ value: next, updatedAt: Date.now() }, { merge: true });
+      await db.collection("tallerData").doc("expertTaller.fcmTokens").set(
+        { value: next, updatedAt: Date.now() },
+        { merge: true }
+      );
     }
 
     res.status(200).json({
