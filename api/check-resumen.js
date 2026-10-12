@@ -175,45 +175,98 @@ module.exports = async function (req, res) {
       return String(k).indexOf(hoyKey) === 0;
     });
 
+    // --- Resumen FIJO a las 18:00 (hora Perú), una vez al día ---
+    const horaFija = (rd.horaFija || "18:00").slice(0, 5);
+    const lastFijo = rd.lastFijoKey || "";
+    let orders = [], parts = [], appointments = [], proformas = [];
+    async function loadTallerData() {
+      try {
+        const snaps = await Promise.all([
+          db.collection("tallerData").doc("expertTaller.orders").get(),
+          db.collection("tallerData").doc("expertTaller.parts").get(),
+          db.collection("tallerData").doc("expertTaller.appointments").get(),
+          db.collection("tallerData").doc("expertTaller.proformas").get(),
+        ]);
+        orders = (snaps[0].exists && snaps[0].data().value) || [];
+        parts = (snaps[1].exists && snaps[1].data().value) || [];
+        appointments = (snaps[2].exists && snaps[2].data().value) || [];
+        proformas = (snaps[3].exists && snaps[3].data().value) || [];
+      } catch (e) {}
+    }
+
+    if (horaPeru >= horaFija && lastFijo !== hoyKey) {
+      await loadTallerData();
+      const resumenFijo = buildResumen(orders, parts, appointments, proformas, hoyKey);
+      const msgFijo = resumenFijo || {
+        title: "Cierre del día 📋",
+        body: "Fin de la jornada. Revisa órdenes, caja y lo pendiente para mañana en Expert.",
+      };
+      // Título fijo de las 6 PM
+      msgFijo.title = "Resumen de las 6:00 p.m. 📋";
+      const pushFijo = await sendPush(
+        tokens,
+        msgFijo.title,
+        msgFijo.body,
+        "resumen-fijo-" + hoyKey
+      );
+      settings = Object.assign({}, settings, {
+        resumenDiario: Object.assign({}, rd, {
+          activo: true,
+          horaFija: horaFija,
+          lastFijoKey: hoyKey,
+          maxPorDia: maxPorDia,
+          ventanaInicio: inicio,
+          ventanaFin: fin,
+          lastSentKeys: lastSentKeys,
+        }),
+      });
+      await db.collection("tallerData").doc("expertTaller.settings").set({
+        value: settings,
+        updatedAt: Date.now(),
+      });
+      res.status(200).json({
+        ok: true,
+        enviado: true,
+        tipo: "resumen-fijo-18h",
+        title: msgFijo.title,
+        body: msgFijo.body,
+        tokens: tokens.length,
+        successCount: pushFijo.successCount,
+        failureCount: pushFijo.failureCount,
+        horaPeru: horaPeru,
+        fechaPeru: hoyKey,
+      });
+      return;
+    }
+
+    // --- Tips aleatorios en ventana (opcional, no reemplaza el de las 18:00) ---
     if (horaPeru < inicio || horaPeru > fin) {
       res.status(200).json({
         ok: true, enviado: false,
         motivo: "fuera de ventana " + inicio + "-" + fin,
         horaPeru: horaPeru, tokens: tokens.length,
+        proximoFijo: horaFija, fijoHoy: lastFijo === hoyKey,
       });
       return;
     }
     if (enviadosHoy.length >= maxPorDia) {
       res.status(200).json({
         ok: true, enviado: false,
-        motivo: "ya se enviaron " + maxPorDia + " hoy",
+        motivo: "ya se enviaron " + maxPorDia + " tips hoy",
         enviadosHoy: enviadosHoy.length, horaPeru: horaPeru, tokens: tokens.length,
       });
       return;
     }
-    // ~35% por corrida → con cron cada 20–30 min suele haber varios al día
     if (Math.random() >= 0.35) {
       res.status(200).json({
         ok: true, enviado: false, motivo: "esta corrida no tocó (aleatorio)",
         enviadosHoy: enviadosHoy.length, horaPeru: horaPeru, tokens: tokens.length,
+        proximoFijo: horaFija, fijoHoy: lastFijo === hoyKey,
       });
       return;
     }
 
-    let orders = [], parts = [], appointments = [], proformas = [];
-    try {
-      const snaps = await Promise.all([
-        db.collection("tallerData").doc("expertTaller.orders").get(),
-        db.collection("tallerData").doc("expertTaller.parts").get(),
-        db.collection("tallerData").doc("expertTaller.appointments").get(),
-        db.collection("tallerData").doc("expertTaller.proformas").get(),
-      ]);
-      orders = (snaps[0].exists && snaps[0].data().value) || [];
-      parts = (snaps[1].exists && snaps[1].data().value) || [];
-      appointments = (snaps[2].exists && snaps[2].data().value) || [];
-      proformas = (snaps[3].exists && snaps[3].data().value) || [];
-    } catch (e) {}
-
+    await loadTallerData();
     const resumen = buildResumen(orders, parts, appointments, proformas, hoyKey);
     const msg = resumen || MOTIVATIONAL[Math.floor(Math.random() * MOTIVATIONAL.length)];
     const tag = "resumen-diario-" + hoyKey + "-" + horaPeru.replace(":", "");
@@ -227,6 +280,8 @@ module.exports = async function (req, res) {
         maxPorDia: maxPorDia,
         ventanaInicio: inicio,
         ventanaFin: fin,
+        horaFija: horaFija,
+        lastFijoKey: lastFijo,
         lastSentKeys: enviadosHoy.concat([nuevaKey]).slice(-12),
       },
     });
