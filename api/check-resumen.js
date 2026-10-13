@@ -1,5 +1,6 @@
 // api/check-resumen.js
-// Cron: cada 20–30 min → https://pushtaller.vercel.app/api/check-resumen
+// Cron: cada 15–20 min → https://pushtaller.vercel.app/api/check-resumen
+// Tips/resúmenes aleatorios en el día (app cerrada). El fijo 18:00 también está en check-citas.
 // Header: Authorization: Bearer <CRON_SECRET>
 // Prueba inmediata: ?test=1
 // Env: CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_JSON
@@ -152,7 +153,8 @@ module.exports = async function (req, res) {
       return;
     }
 
-    if (!rd.activo) {
+    // Por defecto ACTIVO (solo se apaga si en Ajustes está explícitamente en false)
+    if (rd.activo === false) {
       res.status(200).json({
         ok: true, enviado: false, motivo: "resumenDiario desactivado en Ajustes",
         tokens: tokens.length, horaPeru: horaPeru, fechaPeru: hoyKey,

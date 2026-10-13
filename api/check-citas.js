@@ -135,6 +135,7 @@ module.exports = async function (req, res) {
 
     // --- 2. Recordatorio diario al equipo ---
     let recordatorioEnviado = false;
+    let settingsOut = Object.assign({}, settings);
     const recordatorio = settings.recordatorioEquipo;
     if (recordatorio && recordatorio.activo) {
       const hoyKey = peruDateKey(ahora);
@@ -150,22 +151,83 @@ module.exports = async function (req, res) {
             "recordatorio-equipo-" + hoyKey
           );
         }
-        await db.collection("tallerData").doc("expertTaller.settings").set({
-          value: {
-            ...settings,
-            recordatorioEquipo: { ...recordatorio, lastSentKey: hoyKey },
-          },
-          updatedAt: Date.now(),
-        });
+        settingsOut.recordatorioEquipo = Object.assign({}, recordatorio, { lastSentKey: hoyKey });
         recordatorioEnviado = true;
       }
+    }
+
+    // --- 3. Resumen FIJO a las 18:00 (hora Perú), 1 vez al día, app cerrada OK ---
+    let resumenFijoEnviado = false;
+    const rd = settings.resumenDiario || {};
+    const horaFija = (rd.horaFija || "18:00").slice(0, 5);
+    const hoyKeyFijo = peruDateKey(ahora);
+    const p = new Date(ahora.getTime() - 5 * 3600000);
+    const horaPeru =
+      String(p.getUTCHours()).padStart(2, "0") +
+      ":" +
+      String(p.getUTCMinutes()).padStart(2, "0");
+
+    if (horaPeru >= horaFija && rd.lastFijoKey !== hoyKeyFijo && tokens.length) {
+      let orders = [], parts = [], appointments = [], proformas = [];
+      try {
+        const snaps = await Promise.all([
+          db.collection("tallerData").doc("expertTaller.orders").get(),
+          db.collection("tallerData").doc("expertTaller.parts").get(),
+          db.collection("tallerData").doc("expertTaller.appointments").get(),
+          db.collection("tallerData").doc("expertTaller.proformas").get(),
+        ]);
+        orders = (snaps[0].exists && snaps[0].data().value) || [];
+        parts = (snaps[1].exists && snaps[1].data().value) || [];
+        appointments = (snaps[2].exists && snaps[2].data().value) || [];
+        proformas = (snaps[3].exists && snaps[3].data().value) || [];
+      } catch (e) {}
+
+      const listos = orders.filter(function (o) { return o.status === "listo"; }).length;
+      const espera = orders.filter(function (o) { return o.status === "espera_repuesto"; }).length;
+      const bajoStock = parts.filter(function (p) {
+        return p.stock <= (p.min != null ? p.min : 0);
+      }).length;
+      const citasHoy = appointments.filter(function (a) { return a.date === hoyKeyFijo; }).length;
+      const pfPend = proformas.filter(function (p) { return p.status === "pendiente"; }).length;
+      const activos = orders.filter(function (o) { return o.status !== "entregado"; }).length;
+
+      const tips = [];
+      if (listos > 0) tips.push(listos + " lista(s) para entregar");
+      if (espera > 0) tips.push(espera + " esperando repuesto");
+      if (bajoStock > 0) tips.push(bajoStock + " con stock bajo");
+      if (citasHoy > 0) tips.push(citasHoy + " cita(s) hoy");
+      if (pfPend > 0) tips.push(pfPend + " proforma(s) pendiente(s)");
+      if (tips.length === 0 && activos > 0) tips.push(activos + " orden(es) activa(s)");
+
+      const body =
+        tips.length > 0
+          ? tips.slice(0, 3).join(" · ")
+          : "Fin de la jornada. Revisa lo pendiente y deja el taller listo para mañana.";
+
+      await sendPush(tokens, "Resumen de las 6:00 p.m. 📋", body, "resumen-fijo-" + hoyKeyFijo);
+
+      settingsOut.resumenDiario = Object.assign({}, rd, {
+        horaFija: horaFija,
+        lastFijoKey: hoyKeyFijo,
+        activo: rd.activo !== false,
+      });
+      resumenFijoEnviado = true;
+    }
+
+    if (recordatorioEnviado || resumenFijoEnviado) {
+      await db.collection("tallerData").doc("expertTaller.settings").set({
+        value: settingsOut,
+        updatedAt: Date.now(),
+      });
     }
 
     res.status(200).json({
       ok: true,
       avisosCitas: avisosCitas.length,
       recordatorioEquipo: recordatorioEnviado,
+      resumenFijo18h: resumenFijoEnviado,
       tokens: tokens.length,
+      horaPeru: horaPeru,
     });
   } catch (e) {
     console.error(e);
