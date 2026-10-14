@@ -54,6 +54,13 @@ function normalizeHora(h) {
   return String(hh).padStart(2, "0") + ":" + mm;
 }
 
+/** Minutos desde medianoche (evita fallos al comparar "8:00" vs "08:00") */
+function toMinutes(hhmm) {
+  const n = normalizeHora(hhmm);
+  const parts = n.split(":");
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
 function normalizeTokens(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -245,15 +252,16 @@ module.exports = async function (req, res) {
     }
 
     // ----- 2. Recordatorio del equipo -----
+    const yaHoraRecordatorio = toMinutes(horaPeru) >= toMinutes(horaRecordatorio);
     const debeRecordatorio =
       force === "recordatorio" ||
       (recordatorio.activo &&
-        horaPeru >= horaRecordatorio &&
+        yaHoraRecordatorio &&
         recordatorio.lastSentKey !== hoyKey);
 
     if (debeRecordatorio) {
       if (!tokens.length) {
-        diag.recordatorio.motivo = "sin tokens";
+        diag.recordatorio.motivo = "sin tokens — no se marca como enviado; reintentará en el próximo cron";
       } else {
         const pr = await sendPush(
           tokens,
@@ -267,30 +275,40 @@ module.exports = async function (req, res) {
           success: pr.successCount,
           fail: pr.failureCount,
         });
-        settingsOut.recordatorioEquipo = Object.assign({}, recordatorio, {
-          activo: true,
-          hora: horaRecordatorio,
-          lastSentKey: hoyKey,
-        });
-        settingsDirty = true;
-        recordatorioEnviado = true;
+        // Solo marcar enviado si al menos 1 dispositivo recibió el push
+        if ((pr.successCount || 0) > 0 || force === "recordatorio") {
+          settingsOut.recordatorioEquipo = Object.assign({}, recordatorio, {
+            activo: true,
+            hora: horaRecordatorio,
+            lastSentKey: hoyKey,
+            mensaje: recordatorio.mensaje || undefined,
+          });
+          settingsDirty = true;
+          recordatorioEnviado = true;
+        } else {
+          diag.recordatorio.motivo =
+            "push falló en todos los tokens (success=0); se reintenta en el próximo cron";
+        }
       }
     } else if (recordatorio.activo) {
       if (recordatorio.lastSentKey === hoyKey) diag.recordatorio.motivo = "ya enviado hoy";
-      else if (horaPeru < horaRecordatorio) diag.recordatorio.motivo = "aún no es la hora (" + horaRecordatorio + ")";
+      else if (!yaHoraRecordatorio)
+        diag.recordatorio.motivo =
+          "aún no es la hora (programada " + horaRecordatorio + ", ahora " + horaPeru + ")";
       else diag.recordatorio.motivo = "no aplica";
     } else {
-      diag.recordatorio.motivo = "desactivado en la app";
+      diag.recordatorio.motivo = "desactivado en la app (Ajustes → recordatorio OFF)";
     }
 
     // ----- 3. Resumen fijo 18:00 -----
+    const yaHoraResumen = toMinutes(horaPeru) >= toMinutes(horaFija);
     const debeResumen =
       force === "resumen" ||
-      (horaPeru >= horaFija && rd.lastFijoKey !== hoyKey);
+      (yaHoraResumen && rd.lastFijoKey !== hoyKey);
 
     if (debeResumen) {
       if (!tokens.length) {
-        diag.resumenFijo.motivo = "sin tokens";
+        diag.resumenFijo.motivo = "sin tokens — reintentará en el próximo cron";
       } else {
         const body = await buildResumenBody(db, hoyKey);
         const pr = await sendPush(
@@ -304,17 +322,23 @@ module.exports = async function (req, res) {
           success: pr.successCount,
           fail: pr.failureCount,
         });
-        settingsOut.resumenDiario = Object.assign({}, rd, {
-          horaFija: horaFija,
-          lastFijoKey: hoyKey,
-          activo: rd.activo !== false,
-        });
-        settingsDirty = true;
-        resumenFijoEnviado = true;
+        if ((pr.successCount || 0) > 0 || force === "resumen") {
+          settingsOut.resumenDiario = Object.assign({}, rd, {
+            horaFija: horaFija,
+            lastFijoKey: hoyKey,
+            activo: rd.activo !== false,
+          });
+          settingsDirty = true;
+          resumenFijoEnviado = true;
+        } else {
+          diag.resumenFijo.motivo = "push falló (success=0); se reintenta en el próximo cron";
+        }
       }
     } else {
       if (rd.lastFijoKey === hoyKey) diag.resumenFijo.motivo = "ya enviado hoy";
-      else if (horaPeru < horaFija) diag.resumenFijo.motivo = "aún no es la hora (" + horaFija + ")";
+      else if (!yaHoraResumen)
+        diag.resumenFijo.motivo =
+          "aún no es la hora (programada " + horaFija + ", ahora " + horaPeru + ")";
       else diag.resumenFijo.motivo = "no aplica";
     }
 
