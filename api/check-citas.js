@@ -1,8 +1,8 @@
 // api/check-citas.js
 // -----------------------------------------------------------------------------
-// DEBE llamarse desde cron-job.org cada 5–10 minutos:
-//   URL:    https://pushtaller.vercel.app/api/check-citas
-//   Header: Authorization: Bearer <CRON_SECRET>
+// DEBE llamarse cada 5–10 minutos (cron-job.org o GitHub Actions):
+//   URL:  https://pushtaller.vercel.app/api/check-citas?secret=CRON_SECRET
+//   o header: Authorization: Bearer CRON_SECRET
 //
 // Pruebas manuales (mismo header):
 //   ?force=recordatorio  → manda YA el aviso del equipo (ignora hora y lastSent)
@@ -135,13 +135,20 @@ async function buildResumenBody(db, hoyKey) {
 }
 
 module.exports = async function (req, res) {
+  const q = req.query || {};
   const auth = req.headers.authorization || "";
-  if (process.env.CRON_SECRET && auth !== "Bearer " + process.env.CRON_SECRET) {
-    res.status(401).json({ error: "No autorizado", hint: "Header Authorization: Bearer CRON_SECRET" });
+  const secretOk =
+    !process.env.CRON_SECRET ||
+    auth === "Bearer " + process.env.CRON_SECRET ||
+    q.secret === process.env.CRON_SECRET;
+  if (!secretOk) {
+    res.status(401).json({
+      error: "No autorizado",
+      hint: "Usa header Authorization: Bearer CRON_SECRET  o  ?secret=CRON_SECRET en la URL",
+    });
     return;
   }
 
-  const q = req.query || {};
   const force = String(q.force || "");
   const diagOnly = q.diag === "1" || q.diag === "true";
 

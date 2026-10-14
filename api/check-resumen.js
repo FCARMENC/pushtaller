@@ -8,8 +8,8 @@
 const admin = require("firebase-admin");
 
 const APP_LINK = "https://fcarmenc.github.io/tallerpro/";
-const ICON = process.env.NOTIFY_ICON_URL || "https://pushtaller.vercel.app/icon-192.png";
-const BADGE = process.env.NOTIFY_BADGE_URL || "https://pushtaller.vercel.app/badge-72.png";
+const ICON = process.env.NOTIFY_ICON_URL || "https://fcarmenc.github.io/tallerpro/icon-192.png";
+const BADGE = process.env.NOTIFY_BADGE_URL || "https://fcarmenc.github.io/tallerpro/badge-72.png";
 
 function getAdminApp() {
   if (admin.apps.length) return admin.apps[0];
@@ -103,9 +103,17 @@ function buildResumen(orders, parts, appointments, proformas, hoyKey) {
 }
 
 module.exports = async function (req, res) {
+  const q = req.query || {};
   const auth = req.headers.authorization || "";
-  if (process.env.CRON_SECRET && auth !== "Bearer " + process.env.CRON_SECRET) {
-    res.status(401).json({ error: "No autorizado" });
+  const secretOk =
+    !process.env.CRON_SECRET ||
+    auth === "Bearer " + process.env.CRON_SECRET ||
+    q.secret === process.env.CRON_SECRET;
+  if (!secretOk) {
+    res.status(401).json({
+      error: "No autorizado",
+      hint: "Usa header Authorization: Bearer CRON_SECRET  o  ?secret=CRON_SECRET en la URL",
+    });
     return;
   }
 
