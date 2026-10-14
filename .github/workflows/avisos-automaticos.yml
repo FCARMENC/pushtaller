@@ -1,0 +1,35 @@
+# Sube este archivo en el repo PUSHTALLER como:
+#   .github/workflows/avisos-automaticos.yml
+#
+# Luego en GitHub → Settings → Secrets and variables → Actions
+# crea el secreto: CRON_SECRET  (el mismo de Vercel)
+#
+# Esto llama a tus APIs cada 5 minutos, con la app cerrada.
+
+name: Avisos automaticos Expert
+
+on:
+  schedule:
+    # Cada 5 minutos
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  citas-y-recordatorios:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check-citas (8am, 6pm, citas)
+        run: |
+          code=$(curl -sS -o /tmp/out-citas.json -w "%{http_code}" \
+            "https://pushtaller.vercel.app/api/check-citas?secret=${{ secrets.CRON_SECRET }}")
+          echo "HTTP $code"
+          cat /tmp/out-citas.json
+          if [ "$code" != "200" ]; then exit 1; fi
+
+      - name: check-resumen (tips del dia)
+        run: |
+          code=$(curl -sS -o /tmp/out-resumen.json -w "%{http_code}" \
+            "https://pushtaller.vercel.app/api/check-resumen?secret=${{ secrets.CRON_SECRET }}")
+          echo "HTTP $code"
+          cat /tmp/out-resumen.json
+          if [ "$code" != "200" ]; then exit 1; fi
