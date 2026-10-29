@@ -105,10 +105,9 @@ function buildResumen(orders, parts, appointments, proformas, hoyKey) {
 module.exports = async function (req, res) {
   const q = req.query || {};
   const auth = req.headers.authorization || "";
-  const secretOk =
-    !process.env.CRON_SECRET ||
-    auth === "Bearer " + process.env.CRON_SECRET ||
-    q.secret === process.env.CRON_SECRET;
+  // Si CRON_SECRET no está configurado, nadie entra (antes quedaba abierto).
+  const cronSecret = process.env.CRON_SECRET;
+  const secretOk = !!cronSecret && (auth === "Bearer " + cronSecret || q.secret === cronSecret);
   if (!secretOk) {
     res.status(401).json({
       error: "No autorizado",
