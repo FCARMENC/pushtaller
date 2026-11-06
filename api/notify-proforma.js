@@ -2,7 +2,7 @@
 // El cliente avisa que respondió su presupuesto. NO se confía en el navegador: se lee el
 // documento pub_<token> con acceso de administrador, se comprueba que de verdad tenga una
 // respuesta nueva y el texto del aviso se arma aquí. Un mismo aviso se envía una sola vez.
-const { admin, applyCors, getAdminApp, parseBody, clean, sendToAll } = require("../lib/common");
+const { admin, applyCors, getAdminApp, parseBody, clean, sendToAll } = require("../Lib/common");
 
 const IGV_RATE = 0.18;
 
