@@ -1,7 +1,7 @@
 // POST /api/notify  — avisos libres del equipo (abono, "Avisos al equipo", prueba).
 // Ya NO usa un secreto escrito en el navegador: exige la sesión de la cuenta del taller
 // (token de Firebase Auth con correo y contraseña). Env: FIREBASE_SERVICE_ACCOUNT_JSON.
-const { applyCors, parseBody, clean, requireStaff, sendToAll } = require("../lib/common");
+const { applyCors, parseBody, clean, requireStaff, sendToAll } = require("../Lib/common");
 
 module.exports = async function handler(req, res) {
   if (applyCors(req, res)) return;
