@@ -2,7 +2,7 @@
 // El formulario QR avisa que creó una solicitud. El servidor lee la solicitud con acceso de
 // administrador, comprueba que sea reciente y no avisada antes, y arma el texto aquí.
 // Además limita el ritmo: como máximo un aviso cada 15 segundos (anti-spam).
-const { admin, applyCors, getAdminApp, parseBody, clean, sendToAll } = require("../lib/common");
+const { admin, applyCors, getAdminApp, parseBody, clean, sendToAll } = require("../Lib/common");
 
 module.exports = async function handler(req, res) {
   if (applyCors(req, res)) return;
