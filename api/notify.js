@@ -2,7 +2,7 @@
 // Exige la sesión de la cuenta del taller (token de Firebase Auth con correo y contraseña).
 // Body: { title, body, tag?, roles?: [roleId] } — sin roles envía a todos los dispositivos.
 // Env: FIREBASE_SERVICE_ACCOUNT_JSON.
-const { applyCors, parseBody, clean, requireStaff, sendToAll } = require("../lib/common");
+const { applyCors, parseBody, clean, requireStaff, sendToAll } = require("../Lib/common");
 
 module.exports = async function handler(req, res) {
   if (applyCors(req, res)) return;
