@@ -1,7 +1,8 @@
 // POST /api/notify  — avisos libres del equipo (abono, "Avisos al equipo", prueba).
-// Ya NO usa un secreto escrito en el navegador: exige la sesión de la cuenta del taller
-// (token de Firebase Auth con correo y contraseña). Env: FIREBASE_SERVICE_ACCOUNT_JSON.
-const { applyCors, parseBody, clean, requireStaff, sendToAll } = require("../Lib/common");
+// Exige la sesión de la cuenta del taller (token de Firebase Auth con correo y contraseña).
+// Body: { title, body, tag?, roles?: [roleId] } — sin roles envía a todos los dispositivos.
+// Env: FIREBASE_SERVICE_ACCOUNT_JSON.
+const { applyCors, parseBody, clean, requireStaff, sendToAll } = require("../lib/common");
 
 module.exports = async function handler(req, res) {
   if (applyCors(req, res)) return;
@@ -20,7 +21,10 @@ module.exports = async function handler(req, res) {
     const title = clean(body.title || "Expert", 120);
     const msgBody = clean(body.body, 500);
     const tag = clean(body.tag || "aviso-equipo", 64);
-    const out = await sendToAll(title, msgBody, tag);
+    const roles = Array.isArray(body.roles)
+      ? body.roles.map(function (r) { return clean(r, 64); }).filter(Boolean).slice(0, 20)
+      : null;
+    const out = await sendToAll(title, msgBody, tag, { roles: roles && roles.length ? roles : null });
     res.status(200).json(out);
   } catch (e) {
     console.error(e);
